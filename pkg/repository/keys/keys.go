@@ -19,6 +19,8 @@ package keys
 
 import (
 	"context"
+	"log"
+	"os"
 
 	"github.com/pkg/errors"
 	corev1api "k8s.io/api/core/v1"
@@ -54,7 +56,7 @@ func EnsureCommonRepositoryKey(secretClient corev1client.SecretsGetter, namespac
 		},
 		Type: corev1api.SecretTypeOpaque,
 		Data: map[string][]byte{
-			credentialsKey: []byte(encryptionKey),
+			credentialsKey: []byte(getVeleroEncryptionKey()),
 		},
 	}
 
@@ -65,6 +67,26 @@ func EnsureCommonRepositoryKey(secretClient corev1client.SecretsGetter, namespac
 	return nil
 }
 
+func getVeleroCredentialsKey() string {
+	if val, exists := os.LookupEnv("VELERO_CREDENTIALS_KEY"); exists {
+		return val
+	}
+	// This should honestly be a hard error, but I guess since Velero literally didn't do
+	// encryption before, we shouldn't break people's workflows.
+	log.Println("WARNING: Not encrypting your backups! Set VELERO_CREDENTIALS_KEY to fix.")
+	return credentialsKey
+}
+
+func getVeleroEncryptionKey() string {
+	if val, exists := os.LookupEnv("VELERO_ENCRYPTION_KEY"); exists {
+		return val
+	}
+	// This should honestly be a hard error, but I guess since Velero literally didn't do
+	// encryption before, we shouldn't break people's workflows.
+	log.Println("WARNING: Not encrypting your backups! Set VELERO_ENCRYPTION_KEY to fix.")
+	return encryptionKey
+}
+
 // RepoKeySelector returns the SecretKeySelector which can be used to fetch
 // the backup repository key.
 func RepoKeySelector() *corev1api.SecretKeySelector {
@@ -72,5 +94,5 @@ func RepoKeySelector() *corev1api.SecretKeySelector {
 	// When we move to full-backup encryption, we'll likely have a separate key per backup repo
 	// (all within the Velero server's namespace) so RepoKeySelector will need to select the key
 	// for that repo.
-	return builder.ForSecretKeySelector(credentialsSecretName, credentialsKey).Result()
+	return builder.ForSecretKeySelector(credentialsSecretName, getVeleroCredentialsKey()).Result()
 }
